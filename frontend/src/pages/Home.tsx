@@ -3,8 +3,12 @@ import BetModal from '../components/BetModal';
 
 interface Theme {
   id: string;
-  leftNarrative: string;
-  rightNarrative: string;
+  name: string;
+  description: string;
+  leftLegLabel: string;
+  rightLegLabel: string;
+  leftBasket: { symbol: string; weight: number; side: 'LONG' | 'SHORT' }[];
+  rightBasket: { symbol: string; weight: number; side: 'LONG' | 'SHORT' }[];
 }
 
 function Home() {
@@ -52,10 +56,12 @@ function Home() {
               e.currentTarget.style.transform = 'translateY(0)';
             }}
           >
+            <h3 style={{ marginTop: 0, marginBottom: '0.5rem', fontSize: '1.3rem' }}>{theme.name}</h3>
+            <p style={{ marginBottom: '1rem', color: '#666', fontSize: '0.9rem' }}>{theme.description}</p>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{theme.leftNarrative}</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{theme.leftLegLabel}</div>
               <div style={{ fontSize: '1.5rem' }}>VS</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{theme.rightNarrative}</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{theme.rightLegLabel}</div>
             </div>
           </div>
         ))}

@@ -3,8 +3,12 @@ import { useNavigate } from 'react-router-dom';
 
 interface Theme {
   id: string;
-  leftNarrative: string;
-  rightNarrative: string;
+  name: string;
+  description: string;
+  leftLegLabel: string;
+  rightLegLabel: string;
+  leftBasket: { symbol: string; weight: number; side: 'LONG' | 'SHORT' }[];
+  rightBasket: { symbol: string; weight: number; side: 'LONG' | 'SHORT' }[];
 }
 
 interface BetModalProps {
@@ -83,9 +87,15 @@ function BetModal({ theme, onClose, onBetPlaced }: BetModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 style={{ marginBottom: '1rem' }}>Place Your Bet</h2>
+        <div style={{ marginBottom: '0.5rem', fontSize: '1.1rem', textAlign: 'center', fontWeight: 'bold' }}>
+          {theme.name}
+        </div>
+        <div style={{ marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'center', color: '#666' }}>
+          {theme.description}
+        </div>
         <div style={{ marginBottom: '1rem', fontSize: '1.2rem', textAlign: 'center' }}>
-          <span style={{ fontWeight: 'bold' }}>{theme.leftNarrative}</span> VS{' '}
-          <span style={{ fontWeight: 'bold' }}>{theme.rightNarrative}</span>
+          <span style={{ fontWeight: 'bold' }}>{theme.leftLegLabel}</span> VS{' '}
+          <span style={{ fontWeight: 'bold' }}>{theme.rightLegLabel}</span>
         </div>
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: '1rem' }}>
@@ -104,7 +114,7 @@ function BetModal({ theme, onClose, onBetPlaced }: BetModalProps) {
                   cursor: 'pointer',
                 }}
               >
-                {theme.leftNarrative}
+                {theme.leftLegLabel}
               </button>
               <button
                 type="button"
@@ -119,7 +129,7 @@ function BetModal({ theme, onClose, onBetPlaced }: BetModalProps) {
                   cursor: 'pointer',
                 }}
               >
-                {theme.rightNarrative}
+                {theme.rightLegLabel}
               </button>
             </div>
           </div>
