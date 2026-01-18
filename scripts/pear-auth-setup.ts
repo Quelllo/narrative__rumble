@@ -1,159 +1,175 @@
 #!/usr/bin/env node
 
-/**
- * Pear Protocol EIP-712 Authentication Setup Script
- *
- * This script authenticates with Pear Protocol using an EIP-712 signature
- * and prints out an accessToken and refreshToken you can put in .env.
- *
- * Required environment variables:
- * - PEAR_API_BASE: Base URL for Pear API (e.g. https://hl-v2.pearprotocol.io)
- * - PEAR_CLIENT_ID: Your Pear client ID (e.g. HLHackathon1)
- * - PEAR_USER_ADDRESS: Ethereum address of the user
- * - PEAR_USER_PRIVATE_KEY: Private key for signing (0x-prefixed or not)
- *
- * Usage:
- *   npx ts-node scripts/pear-auth-setup.ts
- */
-
 import { ethers } from "ethers";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-interface EIP712MessageResponse {
+// ANSI color codes for better visibility
+const colors = {
+  reset: '\x1b[0m',
+  bright: '\x1b[1m',
+  red: '\x1b[31m',
+  green: '\x1b[32m',
+  yellow: '\x1b[33m',
+  blue: '\x1b[34m',
+  cyan: '\x1b[36m',
+  white: '\x1b[37m',
+  bgBlack: '\x1b[40m',
+  bgRed: '\x1b[41m',
+  bgGreen: '\x1b[42m',
+};
+
+interface EIP712Data {
   domain: {
     name: string;
     version: string;
     chainId: number;
     verifyingContract: string;
   };
-  types: {
-    EIP712Domain: Array<{ name: string; type: string }>;
-    [key: string]: Array<{ name: string; type: string }>;
-  };
+  types: Record<string, Array<{ name: string; type: string }>>;
   message: Record<string, unknown>;
   primaryType: string;
 }
 
-interface LoginRequest {
-  method: "eip712";
-  address: string;
-  clientId: string;
-  details: {
-    signature: string;
-  };
-}
-
-interface LoginResponse {
-  accessToken: string;
-  refreshToken: string;
-  expiresIn?: number;
-  [key: string]: unknown;
-}
-
 async function main() {
-  const apiBase = process.env.PEAR_API_BASE;
-  const clientId = process.env.PEAR_CLIENT_ID;
-  const userAddress = process.env.PEAR_USER_ADDRESS;
-  const privateKey = process.env.PEAR_USER_PRIVATE_KEY;
+  const apiBase = process.env.PEAR_API_BASE!;
+  const clientId = process.env.PEAR_CLIENT_ID!;
+  const userAddress = process.env.PEAR_USER_ADDRESS!;
+  const privateKey = process.env.PEAR_USER_PRIVATE_KEY!;
 
   if (!apiBase || !clientId || !userAddress || !privateKey) {
-    console.error("Missing required environment variables:");
-    console.error("  PEAR_API_BASE:", apiBase ? "✓" : "✗");
-    console.error("  PEAR_CLIENT_ID:", clientId ? "✓" : "✗");
-    console.error("  PEAR_USER_ADDRESS:", userAddress ? "✓" : "✗");
-    console.error("  PEAR_USER_PRIVATE_KEY:", privateKey ? "✓" : "✗");
+    console.error(`${colors.red}${colors.bright}✗ Missing env vars${colors.reset}`);
     process.exit(1);
   }
 
+  const pk = privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+  const wallet = new ethers.Wallet(pk);
+
+  if (wallet.address.toLowerCase() !== userAddress.toLowerCase()) {
+    console.error(`${colors.red}${colors.bright}✗ Address/key mismatch${colors.reset}`);
+    process.exit(1);
+  }
+
+  // Step 1: Get EIP-712 message
+  console.log(`${colors.cyan}${colors.bright}Fetching EIP-712 message...${colors.reset}`);
+  console.log(`${colors.blue}  API Base: ${apiBase}${colors.reset}`);
+  // Ensure API base doesn't have trailing slash
+  const baseUrl = apiBase.replace(/\/$/, '');
+  
+  // First, check if base URL is reachable
   try {
-    console.log("Step 1: Fetching EIP-712 message...");
-    const messageUrl = `${apiBase}/auth/eip712-message?address=${encodeURIComponent(
-      userAddress
-    )}&clientId=${encodeURIComponent(clientId)}`;
-
-    const messageResponse = await fetch(messageUrl, {
-      method: "GET",
-      headers: { Accept: "application/json" },
-    });
-
-    if (!messageResponse.ok) {
-      const errorText = await messageResponse.text();
-      throw new Error(
-        `Failed to get EIP712 message: ${messageResponse.status} - ${errorText}`
-      );
-    }
-
-    const eip712Data = (await messageResponse.json()) as EIP712MessageResponse;
-    console.log("✓ Received EIP-712 message");
-
-    console.log("Step 2: Signing EIP-712 message...");
-    const pkWithPrefix = privateKey.startsWith("0x")
-      ? privateKey
-      : `0x${privateKey}`;
-    const wallet = new ethers.Wallet(pkWithPrefix);
-
-    if (wallet.address.toLowerCase() !== userAddress.toLowerCase()) {
-      throw new Error(
-        `Address mismatch: wallet ${wallet.address} != PEAR_USER_ADDRESS ${userAddress}`
-      );
-    }
-
-    const signature = await wallet.signTypedData(
-      eip712Data.domain,
-      eip712Data.types,
-      eip712Data.message
-    );
-
-    console.log("✓ Message signed");
-
-    console.log("Step 3: Authenticating with Pear API...");
-    const loginRequest: LoginRequest = {
-      method: "eip712",
-      address: userAddress,
-      clientId: clientId,
-      details: { signature },
-    };
-
-    const loginResponse = await fetch(`${apiBase}/auth/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(loginRequest),
-    });
-
-    if (!loginResponse.ok) {
-      const errorText = await loginResponse.text();
-      throw new Error(
-        `Authentication failed: ${loginResponse.status} - ${errorText}`
-      );
-    }
-
-    const loginData = (await loginResponse.json()) as LoginResponse;
-    console.log("✓ Authentication successful\n");
-
-    console.log("=== Authentication Tokens ===");
-    console.log("Access Token:", loginData.accessToken);
-    console.log("Refresh Token:", loginData.refreshToken);
-    if (loginData.expiresIn) {
-      console.log("Expires In:", loginData.expiresIn, "seconds");
-      const expiryDate = new Date(Date.now() + loginData.expiresIn * 1000);
-      console.log("Expires At:", expiryDate.toISOString());
-    }
-    console.log("=============================\n");
-    console.log(
-      "Paste these into your .env as PEAR_ACCESS_TOKEN and PEAR_REFRESH_TOKEN."
-    );
-  } catch (err) {
-    console.error(
-      "\n✗ Error:",
-      err instanceof Error ? err.message : String(err)
-    );
-    process.exit(1);
+    const healthCheck = await fetch(baseUrl, { method: 'GET' });
+    console.log(`${colors.blue}  Base URL status: ${healthCheck.status}${colors.reset}`);
+  } catch (e) {
+    console.log(`${colors.yellow}  ⚠️  Base URL check failed: ${e instanceof Error ? e.message : String(e)}${colors.reset}`);
   }
+  
+  // Try different possible endpoint paths and methods
+  const attempts = [
+    // GET with query params - various paths
+    { method: 'GET', url: `${baseUrl}/auth/eip712-message?address=${encodeURIComponent(userAddress)}&clientId=${encodeURIComponent(clientId)}`, body: null },
+    { method: 'GET', url: `${baseUrl}/auth/message?address=${encodeURIComponent(userAddress)}&clientId=${encodeURIComponent(clientId)}`, body: null },
+    { method: 'GET', url: `${baseUrl}/v1/auth/eip712-message?address=${encodeURIComponent(userAddress)}&clientId=${encodeURIComponent(clientId)}`, body: null },
+    { method: 'GET', url: `${baseUrl}/v2/auth/eip712-message?address=${encodeURIComponent(userAddress)}&clientId=${encodeURIComponent(clientId)}`, body: null },
+    { method: 'GET', url: `${baseUrl}/api/auth/eip712-message?address=${encodeURIComponent(userAddress)}&clientId=${encodeURIComponent(clientId)}`, body: null },
+    // POST with body
+    { method: 'POST', url: `${baseUrl}/auth/eip712-message`, body: { address: userAddress, clientId } },
+    { method: 'POST', url: `${baseUrl}/auth/message`, body: { address: userAddress, clientId } },
+    { method: 'POST', url: `${baseUrl}/v1/auth/eip712-message`, body: { address: userAddress, clientId } },
+    { method: 'POST', url: `${baseUrl}/v2/auth/eip712-message`, body: { address: userAddress, clientId } },
+    { method: 'POST', url: `${baseUrl}/api/auth/eip712-message`, body: { address: userAddress, clientId } },
+  ];
+  
+  let messageRes: Response | null = null;
+  let lastError: string = '';
+  
+  for (const attempt of attempts) {
+    console.log(`${colors.blue}  Trying ${attempt.method} ${attempt.url}${colors.reset}`);
+    
+    const fetchOptions: RequestInit = {
+      method: attempt.method,
+      headers: { Accept: "application/json" },
+    };
+    
+    if (attempt.body) {
+      fetchOptions.headers = { ...fetchOptions.headers, 'Content-Type': 'application/json' };
+      fetchOptions.body = JSON.stringify(attempt.body);
+    }
+    
+    messageRes = await fetch(attempt.url, fetchOptions);
+    
+    if (messageRes.ok) {
+      console.log(`${colors.green}${colors.bright}  ✓ Found endpoint: ${attempt.method} ${attempt.url}${colors.reset}`);
+      break;
+    } else {
+      lastError = await messageRes.text();
+      console.log(`${colors.yellow}  ✗ ${messageRes.status}: ${lastError.substring(0, 100)}${colors.reset}`);
+    }
+  }
+
+  if (!messageRes || !messageRes.ok) {
+    throw new Error(`EIP712 message failed. Last error (${messageRes?.status || 'unknown'}): ${lastError}`);
+  }
+
+  const eip712 = (await messageRes.json()) as EIP712Data;
+  console.log(`${colors.green}${colors.bright}✓ EIP-712 message received${colors.reset}`);
+  
+  // Log the message structure to verify timestamp exists
+  console.log(`${colors.cyan}  EIP-712 message structure:${colors.reset}`);
+  console.log(`${colors.white}${JSON.stringify(eip712.message, null, 2)}${colors.reset}`);
+  
+  // Verify timestamp exists
+  if (!eip712.message.timestamp) {
+    console.error(`${colors.red}${colors.bright}  ⚠️  WARNING: timestamp field not found in eip712.message${colors.reset}`);
+    console.error(`${colors.yellow}  Available fields: ${Object.keys(eip712.message).join(', ')}${colors.reset}`);
+  } else {
+    console.log(`${colors.green}  Timestamp: ${eip712.message.timestamp}${colors.reset}`);
+  }
+
+  // Step 2: Sign immediately
+  console.log(`${colors.cyan}${colors.bright}Signing...${colors.reset}`);
+  const signature = await wallet.signTypedData(
+    eip712.domain,
+    eip712.types,
+    eip712.message
+  );
+  console.log(`${colors.green}${colors.bright}✓ Signed${colors.reset}`);
+
+  // Step 3: Login immediately (minimize timestamp drift)
+  // Include timestamp in details as required by Pear API
+  console.log(`${colors.cyan}${colors.bright}Authenticating...${colors.reset}`);
+  const loginRequest = {
+    method: "eip712",
+    address: userAddress,
+    clientId,
+    details: {
+      signature,
+      timestamp: eip712.message.timestamp,
+    },
+  };
+  
+  // Log the request body before sending
+  console.log(`${colors.cyan}  Login request body:${colors.reset}`);
+  console.log(`${colors.white}${JSON.stringify(loginRequest, null, 2)}${colors.reset}`);
+  
+  const loginRes = await fetch(`${apiBase}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(loginRequest),
+  });
+
+  if (!loginRes.ok) {
+    const err = await loginRes.text();
+    throw new Error(`Login failed: ${loginRes.status} - ${err}`);
+  }
+
+  const tokens: any = await loginRes.json();
+  console.log(`\n${colors.green}${colors.bright}${colors.bgBlack}=== TOKENS ===${colors.reset}`);
+  console.log(`${colors.green}${colors.bright}PEAR_ACCESS_TOKEN:${colors.reset} ${colors.white}${tokens.accessToken}${colors.reset}`);
+  console.log(`${colors.green}${colors.bright}PEAR_REFRESH_TOKEN:${colors.reset} ${colors.white}${tokens.refreshToken}${colors.reset}`);
+  console.log(`${colors.green}${colors.bright}${colors.bgBlack}===============${colors.reset}\n`);
+  console.log(`${colors.cyan}${colors.bright}Copy these to .env and restart backend.${colors.reset}`);
 }
 
-main();
+main().catch(console.error);
